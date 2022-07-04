@@ -16,7 +16,6 @@ namespace CMDB_SMAX_Integration
         {
             try
             {
-               
                 DBHelper helper = new DBHelper();
                 string query = "dbo.truncate_ComputerSoftware";
                 DataTable dtRun = new DataTable();
