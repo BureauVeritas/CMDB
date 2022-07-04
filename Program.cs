@@ -23,6 +23,7 @@ namespace CMDB_SMAX_Integration
                 string baseURI = ConfigurationManager.AppSettings.Get("Base_URI");
                 string queryNames = ConfigurationManager.AppSettings.Get("QueryName");
                 string[] queries = queryNames.Split(',');
+                string tableName = ConfigurationManager.AppSettings.Get("TableName");
 
                 //get authentication token
                 //check for error like SMAX
@@ -42,13 +43,13 @@ namespace CMDB_SMAX_Integration
                     //Uncomment for loop below if needs to debug and comment Parallel ForEaach
                     //foreach (string queryName in queries)
                     //{
-                    //    helper.InsertData(baseURI, chunk_size, queryName, tokenfinal);
+                    //    helper.InsertData(baseURI, chunk_size, queryName, tableName, tokenfinal);
                     //}
                     Parallel.ForEach(queries, queryName =>
                     {
-                        helper.InsertData(baseURI, chunk_size, queryName, tokenfinal);
+                        helper.InsertData(baseURI, chunk_size, queryName, tableName, tokenfinal);
                     });
-                    //helper.SendEmail("Successful Sync with CMDB!");
+                    helper.SendEmail("Successful Sync with CMDB!");
                     Console.WriteLine("Time taken=" + sp.ElapsedMilliseconds.ToString());
                     sp.Stop();
                     sp.Reset();

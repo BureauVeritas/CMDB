@@ -57,7 +57,7 @@ namespace CMDB_SMAX_Integration
             conn = new SqlConnection(strConnection);
         }
 
-        public async void InsertData(string baseURI, int chunk_size, string queryName, dynamic token)
+        public async void InsertData(string baseURI, int chunk_size, string queryName, string tableName, dynamic token)
         {
             string uri = baseURI + "/topology" + "?chunkSize=" + chunk_size;
             dynamic data = "";
@@ -78,9 +78,9 @@ namespace CMDB_SMAX_Integration
                 {
                     //check for error like smax
                     json = await GetData(token, uri, "");
-                    ds = GetProperties(json, "ucmdbId");
+                    ds = GetProperties(json, tableName, "ucmdbId");
                 }
-                InsertJsonIntoTable("Computer", ds, json);
+                InsertJsonIntoTable(tableName, ds, json);
                 //InsertJsonIntoTable("InstalledSoftware", ds, json);
                 //InsertJsonIntoTable("Composition", ds, json);
 
@@ -183,7 +183,7 @@ namespace CMDB_SMAX_Integration
             return await rm.Content.ReadAsStringAsync();
         }
 
-        private DataSet GetProperties(string json, string primaryColumnName)
+        private DataSet GetProperties(string json, string tableName, string primaryColumnName)
         {
             DataSet ds = new DataSet();
             if (string.IsNullOrEmpty(json))
@@ -196,12 +196,6 @@ namespace CMDB_SMAX_Integration
             //JToken srcArray = null;
             var srcArray = jsonLinq.Descendants().Where(d => d is JArray).First();
             List<JToken> tokenList = jsonLinq.Descendants().Where(d => d is JArray).ToList();
-            if (json.Contains("Composition"))
-            {
-                srcArray = jsonLinq.Descendants().Where(d => d is JArray).Last();
-                //if (tokenList.Count > 1)
-                //    srcArray = tokenList[1].First();
-            }
 
             var trgArray = new JArray();
 
@@ -211,41 +205,22 @@ namespace CMDB_SMAX_Integration
             {
                 var cleanRow = new JObject();
                 bool tableFound = false;
-                string tableName = string.Empty;
-                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "computer"))
+                //string tableName = string.Empty;
+                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == tableName.ToLower()))
                     tableFound = true;
-                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "installedsoftware"))
-                    tableFound = true;
-                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "composition"))
-                {
-                    tableName = "Composition";
-                    tableFound = true;
-                }
+
                 if (tableFound)
                 {
                     foreach (JProperty column in row.Properties())
                     {
-                        if (column.Name == "label" && column.Value != null)
-                        {
-                            tableName = column.Value.ToString();
-                            if (!tables.Contains(tableName))
-                                tables.Add(tableName);
-                        }
                         // Only include JValue types
                         if (column.Value is JValue)
                         {
                             if (column.Name == primaryColumnName)
                                 cleanRow.Add(column.Name, column.Value);
-                            if (tableName == "Composition")
-                            {
-                                if (column.Name.Contains("end1Id") || column.Name.Contains("end2Id"))
-                                    cleanRow.Add(column.Name, column.Value);
-                            }
                         }
                         else if (column.Value is JContainer)
                         {
-                            if (((JObject)column.Value).Properties().Count() < 2 && tableName != "Composition")
-                                return null;
                             foreach (JProperty propertyColumn in ((JObject)column.Value).Properties())
                             {
                                 if (propertyColumn.Value is JValue)
@@ -261,19 +236,13 @@ namespace CMDB_SMAX_Integration
                     jObjectList.Add(jList);
                 }
             }
-            if (tables.Count > 0)
-            {
-                foreach (string table in tables)
-                {
-                    List<JList> l = jObjectList.Where(x => x.TableName == table).ToList();
-                    trgArray = new JArray(l.Select(x => x.JsonObject).ToArray());
-                    DataTable dt = JsonConvert.DeserializeObject<DataTable>(trgArray.ToString());
-                    dt.TableName = table;
-                    ds.Tables.Add(dt);
-                }
-                return ds;
-            }
-            return null;
+
+            List<JList> l = jObjectList.Where(x => x.TableName == tableName).ToList();
+            trgArray = new JArray(l.Select(x => x.JsonObject).ToArray());
+            DataTable dt = JsonConvert.DeserializeObject<DataTable>(trgArray.ToString());
+            dt.TableName = tableName;
+            ds.Tables.Add(dt);
+            return ds;
         }
 
         private string GetConnectionString()
@@ -366,5 +335,99 @@ namespace CMDB_SMAX_Integration
             }
             return table;
         }
+
+        private DataSet GetPropertiesOld(string json, string primaryColumnName)
+        {
+            DataSet ds = new DataSet();
+            if (string.IsNullOrEmpty(json))
+                return null;
+            if (!json.Contains("ucmdbId"))
+                return null;
+            var jsonLinq = JObject.Parse(json);
+            // Find the first array using Linq
+
+            //JToken srcArray = null;
+            var srcArray = jsonLinq.Descendants().Where(d => d is JArray).First();
+            List<JToken> tokenList = jsonLinq.Descendants().Where(d => d is JArray).ToList();
+            if (json.Contains("Composition"))
+            {
+                srcArray = jsonLinq.Descendants().Where(d => d is JArray).Last();
+                //if (tokenList.Count > 1)
+                //    srcArray = tokenList[1].First();
+            }
+
+            var trgArray = new JArray();
+
+            List<JList> jObjectList = new List<JList>();
+            List<string> tables = new List<string>();
+            foreach (JObject row in srcArray.Children<JObject>())
+            {
+                var cleanRow = new JObject();
+                bool tableFound = false;
+                string tableName = string.Empty;
+                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "computer"))
+                    tableFound = true;
+                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "installedsoftware"))
+                    tableFound = true;
+                if (row.Properties().Any(x => x.Name == "label" && x.Value.ToString().ToLower() == "composition"))
+                {
+                    tableName = "Composition";
+                    tableFound = true;
+                }
+                if (tableFound)
+                {
+                    foreach (JProperty column in row.Properties())
+                    {
+                        if (column.Name == "label" && column.Value != null)
+                        {
+                            tableName = column.Value.ToString();
+                            if (!tables.Contains(tableName))
+                                tables.Add(tableName);
+                        }
+                        // Only include JValue types
+                        if (column.Value is JValue)
+                        {
+                            if (column.Name == primaryColumnName)
+                                cleanRow.Add(column.Name, column.Value);
+                            if (tableName == "Composition")
+                            {
+                                if (column.Name.Contains("end1Id") || column.Name.Contains("end2Id"))
+                                    cleanRow.Add(column.Name, column.Value);
+                            }
+                        }
+                        else if (column.Value is JContainer)
+                        {
+                            if (((JObject)column.Value).Properties().Count() < 2 && tableName != "Composition")
+                                return null;
+                            foreach (JProperty propertyColumn in ((JObject)column.Value).Properties())
+                            {
+                                if (propertyColumn.Value is JValue)
+                                    cleanRow.Add(propertyColumn.Name, propertyColumn.Value);
+                            }
+                        }
+                    }
+                    trgArray.Add(cleanRow);
+
+                    JList jList = new JList();
+                    jList.TableName = tableName;
+                    jList.JsonObject = cleanRow;
+                    jObjectList.Add(jList);
+                }
+            }
+            if (tables.Count > 0)
+            {
+                foreach (string table in tables)
+                {
+                    List<JList> l = jObjectList.Where(x => x.TableName == table).ToList();
+                    trgArray = new JArray(l.Select(x => x.JsonObject).ToArray());
+                    DataTable dt = JsonConvert.DeserializeObject<DataTable>(trgArray.ToString());
+                    dt.TableName = table;
+                    ds.Tables.Add(dt);
+                }
+                return ds;
+            }
+            return null;
+        }
+
     }
 }
